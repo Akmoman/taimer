@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جدول الحصص الناطق الذكي</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts (Cairo) -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+        }
+        
+        /* Fixed Marquee Styles */
+        .marquee-container {
+            overflow: hidden;
+            white-space: nowrap;
+            position: relative;
+            direction: ltr; /* Force LTR for the container to manage translate direction manually easily */
+        }
+        .marquee-content {
+            display: inline-block;
+            white-space: nowrap;
+            /* Start from Left (negative X) move to Right (positive X) */
+            animation: marquee 25s linear infinite;
+            direction: rtl; /* Keep text direction RTL */
+        }
+        @keyframes marquee {
+            0% { transform: translateX(-100%); } /* Start off-screen left */
+            100% { transform: translateX(100vw); } /* End off-screen right */
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b82f6; 
+            border-radius: 4px;
+        }
+        
+        .active-row {
+            background-color: #dbeafe;
+            border-right: 4px solid #2563eb;
+            font-weight: bold;
+        }
+
+        /* Fire Alarm Animation */
+        @keyframes flashRed {
+            0% { background-color: rgba(220, 38, 38, 0.9); }
+            50% { background-color: rgba(153, 27, 27, 0.9); }
+            100% { background-color: rgba(220, 38, 38, 0.9); }
+        }
+        .fire-active {
+            animation: flashRed 1s infinite;
+            z-index: 9999;
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: white;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-800 flex flex-col">
+
+    <!-- Fire Overlay (Hidden by default) -->
+    <div id="fire-overlay" class="hidden">
+        <i class="fa-solid fa-bell text-9xl mb-8 animate-bounce"></i>
+        <h1 class="text-9xl font-black mb-4">إنــــــذار حــريــق</h1>
+        <h2 class="text-4xl font-bold mb-8">الرجاء التوجه لمخارج الطوارئ فوراً</h2>
+        <button onclick="stopFireAlarm()" class="bg-white text-red-700 px-8 py-3 rounded-full font-bold text-xl hover:bg-gray-100 shadow-xl">إيقاف الإنذار</button>
+    </div>
+
+    <!-- Header & News Ticker -->
+    <header class="bg-blue-900 text-white shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-school text-3xl text-yellow-400"></i>
+                <div>
+                    <h1 class="text-2xl font-bold leading-none">نظام الجدول الناطق</h1>
+                    <span class="text-xs text-blue-200" id="current-date-display">...</span>
+                </div>
+            </div>
+            <div class="text-3xl font-mono font-bold tracking-widest bg-black/20 px-4 py-1 rounded-lg dir-ltr" id="digital-clock">
+                00:00:00 AM
+            </div>
+            <button onclick="toggleAdminPanel()" class="bg-blue-700 hover:bg-blue-600 transition p-2 rounded-full w-10 h-10 flex items-center justify-center">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+        </div>
+        
+        <!-- News Ticker -->
+        <div class="bg-yellow-400 text-blue-900 font-bold text-lg py-1 border-t border-b border-yellow-500 marquee-container relative">
+            <div class="marquee-content" id="news-ticker-display">
+                مرحباً بكم في العام الدراسي الجديد - الرجاء الالتزام بمواعيد الحصص - بالتوفيق لجميع الطلاب
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Right Column: Current Status (Large Display) -->
+        <div class="lg:col-span-1 flex flex-col gap-6">
+            
+            <!-- Current Class Card -->
+            <div class="glass-panel rounded-2xl p-6 text-center border-t-8 border-green-500 relative overflow-hidden">
+                <div class="absolute top-2 left-2 text-gray-400 text-6xl opacity-10">
+                    <i class="fa-solid fa-clock"></i>
+                </div>
+                <h2 class="text-gray-500 font-semibold mb-2">الوضع الحالي</h2>
+                <div id="current-status-box">
+                    <h3 class="text-4xl font-black text-green-700 mb-4 leading-tight" id="current-activity-name">جاري التحميل...</h3>
+                    
+                    <div class="flex justify-center gap-4 text-sm text-gray-600 mb-4">
+                        <div class="bg-white px-3 py-1 rounded shadow-sm border" dir="ltr">
+                            <span id="current-start-time" class="font-bold">--:--</span> <i class="fa-solid fa-play text-green-600 ml-1"></i>
+                        </div>
+                        <div class="bg-white px-3 py-1 rounded shadow-sm border" dir="ltr">
+                            <span id="current-end-time" class="font-bold">--:--</span> <i class="fa-solid fa-stop text-red-600 ml-1"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Countdown Timer -->
+            <div class="glass-panel rounded-2xl p-8 text-center border-t-8 border-blue-500">
+                <h2 class="text-gray-500 font-semibold mb-2">الوقت المتبقي</h2>
+                <div class="text-6xl font-black text-blue-800 font-mono tracking-wider my-4" id="countdown-display">
+                    00:00
+                </div>
+                <p class="text-blue-600 font-medium animate-pulse" id="countdown-label">لبداية الحصة القادمة</p>
+            </div>
+
+            <!-- Special Controls: Quran & Fire -->
+            <div class="glass-panel rounded-2xl p-4 border-t-8 border-yellow-500">
+                <h2 class="text-gray-700 font-bold mb-3 flex items-center gap-2"><i class="fa-solid fa-star text-yellow-500"></i> التحكم السريع</h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <button onclick="toggleQuran()" id="quran-btn" class="bg-teal-600 hover:bg-teal-700 text-white p-3 rounded-xl flex flex-col items-center justify-center gap-2 transition shadow-md">
+                        <i class="fa-solid fa-book-quran text-2xl"></i>
+                        <span class="font-bold text-sm">تلاوة الصباح</span>
+                    </button>
+                    <button onclick="triggerFireAlarm()" class="bg-red-600 hover:bg-red-700 text-white p-3 rounded-xl flex flex-col items-center justify-center gap-2 transition shadow-md animate-pulse">
+                        <i class="fa-solid fa-fire-extinguisher text-2xl"></i>
+                        <span class="font-bold text-sm">إخلاء حريق</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Audio Controls -->
+            <div class="glass-panel rounded-xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-bold text-gray-700"><i class="fa-solid fa-volume-high ml-2"></i>التحكم بالصوت</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="sound-toggle" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+                <button onclick="testSound()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 py-2 rounded text-sm transition">
+                    <i class="fa-solid fa-play ml-1"></i> تجربة الصوت الحالي
+                </button>
+            </div>
+        </div>
+
+        <!-- Left Column: The Schedule Table -->
+        <div class="lg:col-span-2 glass-panel rounded-2xl overflow-hidden flex flex-col shadow-xl">
+            <div class="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+                <h3 class="font-bold text-xl text-gray-800">جدول اليوم</h3>
+                <span class="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full" id="total-periods">0 حصص</span>
+            </div>
+            <div class="overflow-y-auto flex-grow p-0">
+                <table class="w-full text-right">
+                    <thead class="bg-gray-100 text-gray-600 text-sm uppercase sticky top-0 shadow-sm">
+                        <tr>
+                            <th class="px-6 py-3">#</th>
+                            <th class="px-6 py-3">الحصة / النشاط</th>
+                            <th class="px-6 py-3">البداية</th>
+                            <th class="px-6 py-3">النهاية</th>
+                            <th class="px-6 py-3">المدة</th>
+                            <th class="px-6 py-3 text-center"><i class="fa-solid fa-volume-high"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody id="schedule-body" class="divide-y divide-gray-200">
+                        <!-- Rows will be injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+    
+    <!-- Footer Credit -->
+    <footer class="bg-white/80 py-4 mt-4 border-t text-center backdrop-blur-sm">
+        <p class="text-gray-600 font-semibold text-sm">
+            مصمم البرنامج: <span class="text-blue-700 font-bold text-lg">أ. عبدالله بن خلف الرواحي</span>
+        </p>
+    </footer>
+
+    <!-- Admin Modal -->
+    <div id="admin-modal" class="fixed inset-0 bg-black/60 z-[100] hidden items-center justify-center backdrop-blur-sm">
+        <div class="bg-white w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden m-4">
+            
+            <!-- Modal Header -->
+            <div class="bg-gray-800 text-white px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold"><i class="fa-solid fa-sliders ml-2"></i>لوحة التحكم والإعدادات</h2>
+                <button onclick="toggleAdminPanel()" class="hover:text-red-400 transition"><i class="fa-solid fa-xmark text-2xl"></i></button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="flex-grow overflow-y-auto p-6 bg-gray-50">
+                
+                <!-- Section 1: Ticker Settings -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border mb-6">
+                    <h3 class="font-bold text-lg mb-4 text-blue-800 border-b pb-2">الشريط الإخباري</h3>
+                    <div class="flex gap-2">
+                        <input type="text" id="ticker-input" class="flex-grow border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="اكتب النص الذي سيظهر في الشريط المتحرك هنا...">
+                        <button onclick="saveTicker()" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition">حفظ</button>
+                    </div>
+                </div>
+                
+                <!-- Section 1.5: Special Audio Files (Quran & Alarm) -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border mb-6">
+                    <h3 class="font-bold text-lg mb-4 text-teal-800 border-b pb-2">ملفات الصوت الخاصة (القرآن والإنذار)</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Quran Upload -->
+                        <div class="bg-teal-50 p-4 rounded-lg border border-teal-100">
+                            <label class="block text-sm font-bold text-teal-800 mb-2"><i class="fa-solid fa-book-quran ml-2"></i>ملف تلاوة القرآن</label>
+                            <input type="file" id="quran-file" accept="audio/*" class="block w-full text-xs text-slate-500 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-teal-100 file:text-teal-700 hover:file:bg-teal-200"/>
+                            <p class="text-xs text-gray-500 mt-2" id="quran-status">لا يوجد ملف محفوظ</p>
+                        </div>
+                        <!-- Alarm Upload -->
+                        <div class="bg-red-50 p-4 rounded-lg border border-red-100">
+                            <label class="block text-sm font-bold text-red-800 mb-2"><i class="fa-solid fa-bell ml-2"></i>ملف إنذار الحريق</label>
+                            <input type="file" id="alarm-file" accept="audio/*" class="block w-full text-xs text-slate-500 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-red-100 file:text-red-700 hover:file:bg-red-200"/>
+                            <p class="text-xs text-gray-500 mt-2" id="alarm-status">لا يوجد ملف محفوظ</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Global Sound Settings (Fallback) -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border mb-6">
+                    <h3 class="font-bold text-lg mb-4 text-blue-800 border-b pb-2">الجرس المدرسي الافتراضي</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">نوع التنبيه الافتراضي</label>
+                            <select id="sound-type" class="w-full border rounded-lg px-3 py-2 bg-white" onchange="toggleSoundUpload()">
+                                <option value="tts">نطق اسم الحصة (TTS)</option>
+                                <option value="custom">جرس موحد (MP3/WAV)</option>
+                            </select>
+                        </div>
+                        <div id="upload-container" class="hidden">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">رفع جرس موحد (الحد الأقصى 2MB)</label>
+                            <input type="file" id="sound-file" accept="audio/*" class="w-full text-sm text-gray-500 file:ml-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                            <p class="text-xs text-red-500 mt-1" id="upload-error"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Schedule Management -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <div>
+                            <h3 class="font-bold text-lg text-blue-800">إدارة الحصص والأصوات الخاصة</h3>
+                            <p class="text-xs text-gray-500">يمكنك رفع ملف صوتي لكل حصة على حدة.</p>
+                        </div>
+                        <button onclick="addNewRow()" class="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"><i class="fa-solid fa-plus ml-1"></i> إضافة حصة</button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-right min-w-[900px]">
+                            <thead class="bg-gray-100 text-xs text-gray-500 uppercase">
+                                <tr>
+                                    <th class="p-2 w-1/5">الاسم</th>
+                                    <th class="p-2 text-center w-1/4">وقت البدء (س : د : ن)</th>
+                                    <th class="p-2 text-center w-1/4">وقت النهاية (س : د : ن)</th>
+                                    <th class="p-2 w-1/5">ملف صوتي خاص</th>
+                                    <th class="p-2 w-16 text-center">حذف</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-schedule-body">
+                                <!-- Admin Rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-end gap-3">
+                    <button onclick="resetToDefault()" class="text-red-600 hover:text-red-800 px-4 py-2 text-sm font-bold">إعادة ضبط المصنع</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Audio Players -->
+    <audio id="custom-audio-player" class="hidden"></audio>
+    <audio id="quran-player" class="hidden"></audio>
+    <audio id="alarm-player" class="hidden" loop></audio>
+
+    <script>
+        // --- Data & State Management ---
+        const DEFAULT_SCHEDULE = [
+            { id: 1, name: 'الطابور الصباحي', start: '07:30', end: '07:45' },
+            { id: 2, name: 'تلاوة الصباح', start: '07:45', end: '07:55' },
+            { id: 3, name: 'الحصة الأولى', start: '07:55', end: '08:40' },
+            { id: 4, name: 'الحصة الثانية', start: '08:40', end: '09:25' },
+            { id: 5, name: 'استراحة الفطور', start: '09:25', end: '09:40' },
+            { id: 6, name: 'الحصة الثالثة', start: '09:40', end: '10:25' },
+            { id: 7, name: 'الحصة الرابعة', start: '10:25', end: '11:10' },
+            { id: 8, name: 'استراحة الصلاة', start: '11:10', end: '11:30' },
+            { id: 9, name: 'الحصة الخامسة', start: '11:30', end: '12:15' },
+            { id: 10, name: 'الحصة السادسة', start: '12:15', end: '13:00' }
+        ];
+
+        let schedule = JSON.parse(localStorage.getItem('schedule')) || DEFAULT_SCHEDULE;
+        let tickerText = localStorage.getItem('tickerText') || "مرحباً بكم في نظام الجدول المدرسي الذكي";
+        let soundSettings = JSON.parse(localStorage.getItem('soundSettings')) || { type: 'tts', customSound: null };
+        let specialAudio = JSON.parse(localStorage.getItem('specialAudio')) || { quran: null, alarm: null };
+        
+        let lastTriggeredPeriod = null; 
+        let isQuranPlaying = false;
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initClock();
+            loadScheduleToUI();
+            
+            // Safety check for elements before setting value
+            const tickerEl = document.getElementById('news-ticker-display');
+            const tickerInputEl = document.getElementById('ticker-input');
+            const soundTypeEl = document.getElementById('sound-type');
+            const quranPlayer = document.getElementById('quran-player');
+            const alarmPlayer = document.getElementById('alarm-player');
+
+            if(tickerEl) tickerEl.textContent = tickerText;
+            if(tickerInputEl) tickerInputEl.value = tickerText;
+            if(soundTypeEl) soundTypeEl.value = soundSettings.type;
+            
+            updateSpecialAudioStatus();
+            toggleSoundUpload();
+            renderAdminTable();
+
+            // Setup players if data exists
+            if(specialAudio.quran && quranPlayer) quranPlayer.src = specialAudio.quran;
+            if(specialAudio.alarm && alarmPlayer) alarmPlayer.src = specialAudio.alarm;
+
+            // Audio Permission
+            document.body.addEventListener('click', () => {
+                if (SpeechSynthesisUtterance) window.speechSynthesis.resume();
+            }, { once: true });
+        });
+
+        // --- Special Audio Features (Quran & Fire) ---
+
+        // 1. Quran Logic
+        const quranFile = document.getElementById('quran-file');
+        if(quranFile) {
+            quranFile.addEventListener('change', function() {
+                handleSpecialFileUpload(this.files[0], 'quran', 'ملف القرآن');
+            });
+        }
+
+        function toggleQuran() {
+            const player = document.getElementById('quran-player');
+            const btn = document.getElementById('quran-btn');
+            
+            if (!player || !btn) return;
+
+            if (isQuranPlaying) {
+                player.pause();
+                player.currentTime = 0;
+                isQuranPlaying = false;
+                btn.classList.replace('bg-red-500', 'bg-teal-600');
+                btn.innerHTML = `<i class="fa-solid fa-book-quran text-2xl"></i><span class="font-bold text-sm">تلاوة الصباح</span>`;
+            } else {
+                if (!specialAudio.quran) {
+                    alert("لم يتم رفع ملف للقرآن الكريم. يرجى رفعه من الإعدادات.");
+                    return;
+                }
+                player.play().then(() => {
+                    isQuranPlaying = true;
+                    btn.classList.replace('bg-teal-600', 'bg-red-500');
+                    btn.innerHTML = `<i class="fa-solid fa-stop text-2xl"></i><span class="font-bold text-sm">إيقاف التلاوة</span>`;
+                }).catch(e => alert("حدث خطأ في تشغيل الملف الصوت."));
+            }
+        }
+
+        // 2. Fire Alarm Logic
+        const alarmFile = document.getElementById('alarm-file');
+        if(alarmFile) {
+            alarmFile.addEventListener('change', function() {
+                handleSpecialFileUpload(this.files[0], 'alarm', 'ملف الإنذار');
+            });
+        }
+
+        function triggerFireAlarm() {
+            const overlay = document.getElementById('fire-overlay');
+            const player = document.getElementById('alarm-player');
+            
+            // Stop other sounds
+            const qPlayer = document.getElementById('quran-player');
+            const cPlayer = document.getElementById('custom-audio-player');
+            if(qPlayer) qPlayer.pause();
+            if(cPlayer) cPlayer.pause();
+            window.speechSynthesis.cancel();
+
+            // Show Overlay
+            if(overlay) {
+                overlay.classList.remove('hidden');
+                overlay.classList.add('fire-active');
+            }
+
+            // Play Alarm
+            if (specialAudio.alarm && player) {
+                player.play().catch(e => console.log(e));
+            } else {
+                speakText("إنذار حريق. الرجاء الإخلاء فوراً.");
+            }
+        }
+
+        function stopFireAlarm() {
+            const overlay = document.getElementById('fire-overlay');
+            const player = document.getElementById('alarm-player');
+            
+            if(overlay) {
+                overlay.classList.add('hidden');
+                overlay.classList.remove('fire-active');
+            }
+            if(player) {
+                player.pause();
+                player.currentTime = 0;
+            }
+            window.speechSynthesis.cancel();
+        }
+
+        function handleSpecialFileUpload(file, key, name) {
+            if (!file) return;
+            if (file.size > 5 * 1024 * 1024) { 
+                alert(`حجم ${name} كبير جداً. يجب أن يكون أقل من 5 ميجابايت.`);
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    specialAudio[key] = e.target.result;
+                    localStorage.setItem('specialAudio', JSON.stringify(specialAudio));
+                    
+                    const player = document.getElementById(key + '-player');
+                    if(player) player.src = e.target.result;
+                    
+                    updateSpecialAudioStatus();
+                    alert(`تم حفظ ${name} بنجاح!`);
+                } catch (err) {
+                    alert("الذاكرة ممتلئة. حاول استخدام ملفات أصغر.");
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function updateSpecialAudioStatus() {
+            const qStat = document.getElementById('quran-status');
+            const aStat = document.getElementById('alarm-status');
+            
+            if(qStat) {
+                qStat.textContent = specialAudio.quran ? "✅ يوجد ملف محفوظ" : "❌ لا يوجد ملف";
+                qStat.className = specialAudio.quran ? "text-xs text-green-600 font-bold mt-2" : "text-xs text-red-500 mt-2";
+            }
+            
+            if(aStat) {
+                aStat.textContent = specialAudio.alarm ? "✅ يوجد ملف محفوظ" : "❌ لا يوجد ملف";
+                aStat.className = specialAudio.alarm ? "text-xs text-green-600 font-bold mt-2" : "text-xs text-red-500 mt-2";
+            }
+        }
+
+        // --- Core Logic: Time & Status ---
+        function initClock() {
+            setInterval(() => {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('en-US', { hour12: true });
+                
+                const clockEl = document.getElementById('digital-clock');
+                const dateEl = document.getElementById('current-date-display');
+                
+                if(clockEl) clockEl.textContent = timeString;
+                if(dateEl) dateEl.textContent = now.toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                
+                checkScheduleStatus(now);
+            }, 1000);
+        }
+
+        function checkScheduleStatus(now) {
+            const currentTimeVal = now.getHours() * 60 + now.getMinutes();
+            const currentSeconds = now.getSeconds();
+
+            let activePeriod = null;
+            let nextPeriod = null;
+
+            schedule.sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
+
+            for (let i = 0; i < schedule.length; i++) {
+                const period = schedule[i];
+                const startMin = timeToMin(period.start);
+                const endMin = timeToMin(period.end);
+
+                if (currentTimeVal >= startMin && currentTimeVal < endMin) {
+                    activePeriod = period;
+                    if (currentTimeVal === startMin && currentSeconds === 0) {
+                        triggerAlert(period);
+                    }
+                    if (i + 1 < schedule.length) nextPeriod = schedule[i+1];
+                    break;
+                }
+                
+                if (currentTimeVal < startMin) {
+                    if (!nextPeriod) nextPeriod = period;
+                    break; 
+                }
+            }
+
+            updateStatusUI(activePeriod, nextPeriod, currentTimeVal, now);
+        }
+
+        function updateStatusUI(active, next, currentMin, nowObj) {
+            const nameEl = document.getElementById('current-activity-name');
+            const startEl = document.getElementById('current-start-time');
+            const endEl = document.getElementById('current-end-time');
+            const countdownDisplay = document.getElementById('countdown-display');
+            const countdownLabel = document.getElementById('countdown-label');
+            const nextNameEl = document.getElementById('next-activity-name');
+            
+            // Guards to prevent null errors
+            if (!nameEl || !startEl || !endEl || !countdownDisplay || !countdownLabel || !nextNameEl) return;
+
+            document.querySelectorAll('#schedule-body tr').forEach(tr => tr.classList.remove('active-row'));
+
+            if (active) {
+                nameEl.textContent = active.name;
+                nameEl.className = "text-4xl font-black text-green-700 mb-4 leading-tight";
+                startEl.textContent = formatTime12(active.start);
+                endEl.textContent = formatTime12(active.end);
+                
+                const endMin = timeToMin(active.end);
+                const diffMin = endMin - currentMin - 1;
+                const diffSec = 59 - nowObj.getSeconds();
+                
+                countdownDisplay.textContent = `${pad(diffMin)}:${pad(diffSec)}`;
+                countdownLabel.textContent = "المتبقي لنهاية " + active.name;
+                
+                const activeRow = document.getElementById(`row-${active.id}`);
+                if (activeRow) activeRow.classList.add('active-row');
+
+            } else {
+                if (next) {
+                    nameEl.textContent = "استراحة / انتظار";
+                    nameEl.className = "text-4xl font-black text-orange-600 mb-4 leading-tight";
+                    startEl.textContent = "--:--";
+                    endEl.textContent = formatTime12(next.start);
+
+                    const startMin = timeToMin(next.start);
+                    const diffMin = startMin - currentMin - 1;
+                    const diffSec = 59 - nowObj.getSeconds();
+                    
+                    countdownDisplay.textContent = `${pad(diffMin)}:${pad(diffSec)}`;
+                    countdownLabel.textContent = "المتبقي لبداية " + next.name;
+                } else {
+                    nameEl.textContent = "انتهى الدوام";
+                    nameEl.className = "text-4xl font-black text-gray-500 mb-4 leading-tight";
+                    startEl.textContent = "--:--";
+                    endEl.textContent = "--:--";
+                    countdownDisplay.textContent = "--:--";
+                    countdownLabel.textContent = "نراكم غداً";
+                }
+            }
+            nextNameEl.textContent = next ? next.name : "لا يوجد";
+        }
+
+        // --- Audio Logic ---
+        function triggerAlert(period) {
+            const soundToggle = document.getElementById('sound-toggle');
+            if (soundToggle && !soundToggle.checked) return;
+            
+            if (lastTriggeredPeriod === period.id + '_' + period.start) return; 
+            
+            lastTriggeredPeriod = period.id + '_' + period.start;
+            const audioPlayer = document.getElementById('custom-audio-player');
+            const fireOverlay = document.getElementById('fire-overlay');
+
+            // If fire alarm is active, don't play school bell
+            if(fireOverlay && !fireOverlay.classList.contains('hidden')) return;
+
+            if (period.audioData && audioPlayer) {
+                audioPlayer.src = period.audioData;
+                audioPlayer.play().catch(e => console.log("Audio Error:", e));
+                return;
+            }
+
+            if (soundSettings.type === 'custom' && soundSettings.customSound && audioPlayer) {
+                audioPlayer.src = soundSettings.customSound;
+                audioPlayer.play().catch(e => console.log("Audio Error:", e));
+            } else {
+                speakText(`حان الآن موعد، ${period.name}`);
+            }
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ar-SA';
+                utterance.rate = 0.9;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function testSound() {
+             const audioPlayer = document.getElementById('custom-audio-player');
+             if (soundSettings.type === 'custom' && soundSettings.customSound && audioPlayer) {
+                audioPlayer.src = soundSettings.customSound;
+                audioPlayer.play();
+            } else {
+                speakText("تجربة الصوت. هذا مثال على التنبيه الناطق.");
+            }
+        }
+        
+        function previewRowSound(index) {
+            const item = schedule[index];
+            if(item.audioData) {
+                 const audio = document.getElementById('custom-audio-player');
+                 if(audio) {
+                    audio.src = item.audioData;
+                    audio.play();
+                 }
+            }
+        }
+
+        // --- Standard File Uploads (Bell) ---
+        const fileInput = document.getElementById('sound-file');
+        if(fileInput) {
+            fileInput.addEventListener('change', function() {
+                const file = this.files[0];
+                const errorMsg = document.getElementById('upload-error');
+                if(errorMsg) errorMsg.textContent = "";
+
+                if (file) {
+                    if (file.size > 2 * 1024 * 1024) { 
+                        if(errorMsg) errorMsg.textContent = "حجم الملف كبير جداً.";
+                        this.value = "";
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            soundSettings.customSound = e.target.result;
+                            localStorage.setItem('soundSettings', JSON.stringify(soundSettings));
+                            alert("تم حفظ الجرس الموحد بنجاح!");
+                        } catch (err) {
+                            if(errorMsg) errorMsg.textContent = "مساحة التخزين ممتلئة.";
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        function handleRowFileSelect(index, input) {
+            const file = input.files[0];
+            if (!file) return;
+            if (file.size > 500 * 1024) { 
+                alert("حجم الملف كبير. يرجى استخدام ملفات أقل من 500 كيلوبايت.");
+                input.value = "";
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    schedule[index].audioData = e.target.result;
+                    saveSchedule();
+                    renderAdminTable();
+                    alert("تم الحفظ");
+                } catch (err) {
+                    alert("الذاكرة ممتلئة.");
+                    delete schedule[index].audioData;
+                    renderAdminTable();
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeRowSound(index) {
+            if(confirm("حذف الصوت الخاص؟")) {
+                delete schedule[index].audioData;
+                saveSchedule();
+                renderAdminTable();
+            }
+        }
+
+        function toggleSoundUpload() {
+            const soundTypeEl = document.getElementById('sound-type');
+            const uploadContainer = document.getElementById('upload-container');
+            
+            if(!soundTypeEl || !uploadContainer) return;
+
+            soundSettings.type = soundTypeEl.value;
+            localStorage.setItem('soundSettings', JSON.stringify(soundSettings));
+            soundSettings.type === 'custom' ? uploadContainer.classList.remove('hidden') : uploadContainer.classList.add('hidden');
+        }
+
+        // --- UI Rendering ---
+        function loadScheduleToUI() {
+            const tbody = document.getElementById('schedule-body');
+            const totalPeriodsEl = document.getElementById('total-periods');
+            
+            if(!tbody) return;
+
+            tbody.innerHTML = '';
+            
+            schedule.sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
+
+            schedule.forEach((item, index) => {
+                const duration = timeToMin(item.end) - timeToMin(item.start);
+                const hasSound = item.audioData ? '<span class="text-green-500"><i class="fa-solid fa-music"></i></span>' : '<span class="text-gray-300"><i class="fa-solid fa-volume-off"></i></span>';
+                
+                const row = `
+                    <tr id="row-${item.id}" class="hover:bg-blue-50 transition">
+                        <td class="px-6 py-4 font-bold text-gray-500">${index + 1}</td>
+                        <td class="px-6 py-4 font-semibold text-gray-800">${item.name}</td>
+                        <td class="px-6 py-4 text-blue-600 font-mono text-lg" dir="ltr">${formatTime12(item.start)}</td>
+                        <td class="px-6 py-4 text-red-600 font-mono text-lg" dir="ltr">${formatTime12(item.end)}</td>
+                        <td class="px-6 py-4 text-gray-500 text-sm">${duration} دقيقة</td>
+                         <td class="px-6 py-4 text-center">${hasSound}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+            
+            if(totalPeriodsEl) totalPeriodsEl.textContent = schedule.length + " حصص";
+        }
+
+        function renderAdminTable() {
+            const tbody = document.getElementById('admin-schedule-body');
+            if(!tbody) return;
+
+            tbody.innerHTML = '';
+            
+            schedule.forEach((item, index) => {
+                let soundHtml = item.audioData ? 
+                    `<div class="flex items-center gap-2 justify-center bg-green-50 p-1 rounded border border-green-200">
+                        <span class="text-xs text-green-700 font-bold">محفوظ</span>
+                        <button onclick="previewRowSound(${index})" class="text-blue-600"><i class="fa-solid fa-play"></i></button>
+                        <button onclick="removeRowSound(${index})" class="text-red-500"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>` : 
+                    `<input type="file" accept="audio/*" onchange="handleRowFileSelect(${index}, this)" class="block w-full text-xs text-slate-500 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100"/>`;
+
+                const startControls = generateTimeControls(item.start, 'start', index);
+                const endControls = generateTimeControls(item.end, 'end', index);
+
+                const row = `
+                    <tr class="border-b hover:bg-gray-50 align-top">
+                        <td class="p-2"><input type="text" value="${item.name}" onchange="updateScheduleItem(${index}, 'name', this.value)" class="w-full border rounded px-2 py-1 text-sm"></td>
+                        <td class="p-2 text-center">${startControls}</td>
+                        <td class="p-2 text-center">${endControls}</td>
+                        <td class="p-2">${soundHtml}</td>
+                        <td class="p-2 text-center">
+                            <button onclick="deleteScheduleItem(${index})" class="text-red-500 hover:bg-red-100 p-2 rounded"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        function generateTimeControls(time24, type, index) {
+            const { h, m, period } = get12HourParts(time24);
+            let hOpts = '';
+            for(let i=1; i<=12; i++) hOpts += `<option value="${i}" ${i === h ? 'selected' : ''}>${pad(i)}</option>`;
+            let mOpts = '';
+            for(let i=0; i<60; i++) mOpts += `<option value="${i}" ${i === m ? 'selected' : ''}>${pad(i)}</option>`;
+            let pOpts = `<option value="AM" ${period === 'AM' ? 'selected' : ''}>ص</option><option value="PM" ${period === 'PM' ? 'selected' : ''}>م</option>`;
+            
+            return `
+                <div class="flex items-center justify-center gap-1 dir-ltr">
+                    <select id="${type}-h-${index}" onchange="updateTimeFromSelects(${index}, '${type}')" class="border rounded p-1 text-sm bg-white cursor-pointer w-14 text-center appearance-none">${hOpts}</select>
+                    <span class="font-bold">:</span>
+                    <select id="${type}-m-${index}" onchange="updateTimeFromSelects(${index}, '${type}')" class="border rounded p-1 text-sm bg-white cursor-pointer w-14 text-center appearance-none">${mOpts}</select>
+                    <select id="${type}-p-${index}" onchange="updateTimeFromSelects(${index}, '${type}')" class="border rounded p-1 text-sm bg-gray-100 cursor-pointer w-14 text-center font-bold appearance-none">${pOpts}</select>
+                </div>
+            `;
+        }
+
+        function updateTimeFromSelects(index, type) {
+            const h = parseInt(document.getElementById(`${type}-h-${index}`).value);
+            const m = parseInt(document.getElementById(`${type}-m-${index}`).value);
+            const p = document.getElementById(`${type}-p-${index}`).value;
+            let h24 = h;
+            if (p === 'PM' && h !== 12) h24 += 12;
+            if (p === 'AM' && h === 12) h24 = 0;
+            updateScheduleItem(index, type, `${pad(h24)}:${pad(m)}`);
+        }
+
+        function get12HourParts(timeStr) {
+            let [h, m] = timeStr.split(':').map(Number);
+            let period = 'AM';
+            if (h >= 12) { period = 'PM'; if (h > 12) h -= 12; }
+            if (h === 0) h = 12;
+            return { h, m, period };
+        }
+
+        function toggleAdminPanel() {
+            const modal = document.getElementById('admin-modal');
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                renderAdminTable();
+                updateSpecialAudioStatus();
+            } else {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                loadScheduleToUI();
+            }
+        }
+
+        function saveTicker() {
+            const val = document.getElementById('ticker-input').value;
+            localStorage.setItem('tickerText', val);
+            const display = document.getElementById('news-ticker-display');
+            if(display) display.textContent = val;
+            alert("تم التحديث");
+        }
+
+        function updateScheduleItem(index, field, value) {
+            schedule[index][field] = value;
+            saveSchedule();
+        }
+
+        function addNewRow() {
+            schedule.push({ id: Date.now(), name: 'حصة جديدة', start: '13:00', end: '13:45' });
+            saveSchedule();
+            renderAdminTable();
+        }
+
+        function deleteScheduleItem(index) {
+            if(confirm("حذف الحصة؟")) {
+                schedule.splice(index, 1);
+                saveSchedule();
+                renderAdminTable();
+            }
+        }
+
+        function saveSchedule() {
+            schedule.sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
+            try {
+                localStorage.setItem('schedule', JSON.stringify(schedule));
+            } catch (e) {
+                alert("الذاكرة ممتلئة!");
+            }
+        }
+        
+        function resetToDefault() {
+            if(confirm("إعادة ضبط المصنع؟")) {
+                localStorage.removeItem('schedule');
+                localStorage.removeItem('tickerText');
+                localStorage.removeItem('specialAudio');
+                location.reload();
+            }
+        }
+
+        function timeToMin(timeStr) {
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + m;
+        }
+
+        function pad(num) {
+            return num.toString().padStart(2, '0');
+        }
+
+        function formatTime12(time24) {
+            let [h, m] = time24.split(':').map(Number);
+            const period = h >= 12 ? 'م' : 'ص';
+            h = h % 12 || 12;
+            return `${pad(h)}:${pad(m)} ${period}`;
+        }
+
+    </script>
+</body>
+</html>
