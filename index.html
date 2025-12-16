@@ -115,13 +115,13 @@
     </header>
 
     <!-- Main Content -->
-    <main class="flex-grow container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <main class="flex-grow container mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
         
         <!-- Right Column: Current Status (Large Display) -->
-        <div class="lg:col-span-1 flex flex-col gap-6">
+        <div class="lg:col-span-1 flex flex-col gap-6 h-full overflow-y-auto pb-4">
             
             <!-- Current Class Card -->
-            <div class="glass-panel rounded-2xl p-6 text-center border-t-8 border-green-500 relative overflow-hidden">
+            <div class="glass-panel rounded-2xl p-6 text-center border-t-8 border-green-500 relative overflow-hidden shrink-0">
                 <div class="absolute top-2 left-2 text-gray-400 text-6xl opacity-10">
                     <i class="fa-solid fa-clock"></i>
                 </div>
@@ -141,7 +141,7 @@
             </div>
 
             <!-- Countdown Timer -->
-            <div class="glass-panel rounded-2xl p-8 text-center border-t-8 border-blue-500">
+            <div class="glass-panel rounded-2xl p-8 text-center border-t-8 border-blue-500 shrink-0">
                 <h2 class="text-gray-500 font-semibold mb-2">الوقت المتبقي</h2>
                 <div class="text-6xl font-black text-blue-800 font-mono tracking-wider my-4" id="countdown-display">
                     00:00
@@ -150,7 +150,7 @@
             </div>
 
             <!-- Special Controls: Quran & Fire -->
-            <div class="glass-panel rounded-2xl p-4 border-t-8 border-yellow-500">
+            <div class="glass-panel rounded-2xl p-4 border-t-8 border-yellow-500 shrink-0">
                 <h2 class="text-gray-700 font-bold mb-3 flex items-center gap-2"><i class="fa-solid fa-star text-yellow-500"></i> التحكم السريع</h2>
                 <div class="grid grid-cols-2 gap-3">
                     <button onclick="toggleQuran()" id="quran-btn" class="bg-teal-600 hover:bg-teal-700 text-white p-3 rounded-xl flex flex-col items-center justify-center gap-2 transition shadow-md">
@@ -165,7 +165,7 @@
             </div>
             
             <!-- Audio Controls -->
-            <div class="glass-panel rounded-xl p-4">
+            <div class="glass-panel rounded-xl p-4 shrink-0">
                 <div class="flex items-center justify-between mb-2">
                     <span class="font-bold text-gray-700"><i class="fa-solid fa-volume-high ml-2"></i>التحكم بالصوت</span>
                     <label class="relative inline-flex items-center cursor-pointer">
@@ -180,14 +180,14 @@
         </div>
 
         <!-- Left Column: The Schedule Table -->
-        <div class="lg:col-span-2 glass-panel rounded-2xl overflow-hidden flex flex-col shadow-xl">
-            <div class="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
+        <div class="lg:col-span-2 glass-panel rounded-2xl overflow-hidden flex flex-col shadow-xl h-full">
+            <div class="bg-gray-50 px-6 py-4 border-b flex justify-between items-center shrink-0">
                 <h3 class="font-bold text-xl text-gray-800">جدول اليوم</h3>
                 <span class="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full" id="total-periods">0 حصص</span>
             </div>
-            <div class="overflow-y-auto flex-grow p-0">
+            <div class="overflow-y-auto flex-grow p-0 bg-white/50">
                 <table class="w-full text-right">
-                    <thead class="bg-gray-100 text-gray-600 text-sm uppercase sticky top-0 shadow-sm">
+                    <thead class="bg-gray-100 text-gray-600 text-sm uppercase sticky top-0 shadow-sm z-10">
                         <tr>
                             <th class="px-6 py-3">#</th>
                             <th class="px-6 py-3">الحصة / النشاط</th>
@@ -206,7 +206,7 @@
     </main>
     
     <!-- Footer Credit -->
-    <footer class="bg-white/80 py-4 mt-4 border-t text-center backdrop-blur-sm">
+    <footer class="bg-white/80 py-4 mt-auto border-t text-center backdrop-blur-sm fixed bottom-0 w-full z-40">
         <p class="text-gray-600 font-semibold text-sm">
             مصمم البرنامج: <span class="text-blue-700 font-bold text-lg">أ. عبدالله بن خلف الرواحي</span>
         </p>
@@ -314,6 +314,8 @@
 
     <script>
         // --- Data & State Management ---
+        const DATA_VERSION = '2.1'; // Versioning to force update layout
+        
         const DEFAULT_SCHEDULE = [
             { id: 1, name: 'الطابور الصباحي', start: '07:15', end: '07:30' },
             { id: 2, name: 'الحصة الأولى', start: '07:30', end: '08:10' },
@@ -327,7 +329,16 @@
             { id: 10, name: 'الحصة الثامنة', start: '12:30', end: '13:10' }
         ];
 
-        let schedule = JSON.parse(localStorage.getItem('schedule')) || DEFAULT_SCHEDULE;
+        // Load schedule but verify version to force update to 8 periods if user has old data
+        let schedule = JSON.parse(localStorage.getItem('schedule'));
+        const savedVersion = localStorage.getItem('dataVersion');
+
+        if (!schedule || savedVersion !== DATA_VERSION) {
+            schedule = DEFAULT_SCHEDULE;
+            localStorage.setItem('schedule', JSON.stringify(schedule));
+            localStorage.setItem('dataVersion', DATA_VERSION);
+        }
+
         let tickerText = localStorage.getItem('tickerText') || "مرحباً بكم في نظام الجدول المدرسي الذكي";
         let soundSettings = JSON.parse(localStorage.getItem('soundSettings')) || { type: 'tts', customSound: null };
         let specialAudio = JSON.parse(localStorage.getItem('specialAudio')) || { quran: null, alarm: null };
@@ -582,6 +593,11 @@
                 
                 const activeRow = document.getElementById(`row-${active.id}`);
                 if (activeRow) activeRow.classList.add('active-row');
+                
+                // Scroll to active row automatically
+                if(activeRow) {
+                    activeRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
 
             } else {
                 if (next) {
