@@ -149,6 +149,17 @@
                 <p class="text-blue-600 font-medium animate-pulse" id="countdown-label">لبداية الحصة القادمة</p>
             </div>
 
+            <!-- Next Class Preview (Was Missing - Restored) -->
+            <div class="glass-panel rounded-2xl p-4 flex items-center gap-4 border-r-4 border-purple-500 shrink-0">
+                <div class="bg-purple-100 text-purple-600 w-12 h-12 rounded-full flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-forward"></i>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">التالي:</p>
+                    <h4 class="font-bold text-lg" id="next-activity-name">--</h4>
+                </div>
+            </div>
+
             <!-- Special Controls: Quran & Fire -->
             <div class="glass-panel rounded-2xl p-4 border-t-8 border-yellow-500 shrink-0">
                 <h2 class="text-gray-700 font-bold mb-3 flex items-center gap-2"><i class="fa-solid fa-star text-yellow-500"></i> التحكم السريع</h2>
@@ -314,35 +325,55 @@
 
     <script>
         // --- Data & State Management ---
-        const DATA_VERSION = '2.1'; // Versioning to force update layout
+        const DATA_VERSION = '2.2'; // Updated Version
         
         const DEFAULT_SCHEDULE = [
             { id: 1, name: 'الطابور الصباحي', start: '07:15', end: '07:30' },
-            { id: 2, name: 'الحصة الأولى', start: '07:30', end: '08:10' },
-            { id: 3, name: 'الحصة الثانية', start: '08:10', end: '08:50' },
-            { id: 4, name: 'الحصة الثالثة', start: '08:50', end: '09:30' },
-            { id: 5, name: 'الحصة الرابعة', start: '09:30', end: '10:10' },
-            { id: 6, name: 'استراحة', start: '10:10', end: '10:30' },
-            { id: 7, name: 'الحصة الخامسة', start: '10:30', end: '11:10' },
-            { id: 8, name: 'الحصة السادسة', start: '11:10', end: '11:50' },
-            { id: 9, name: 'الحصة السابعة', start: '11:50', end: '12:30' },
-            { id: 10, name: 'الحصة الثامنة', start: '12:30', end: '13:10' }
+            { id: 2, name: 'تلاوة الصباح', start: '07:30', end: '07:40' },
+            { id: 3, name: 'الحصة الأولى', start: '07:40', end: '08:20' },
+            { id: 4, name: 'الحصة الثانية', start: '08:20', end: '09:00' },
+            { id: 5, name: 'الحصة الثالثة', start: '09:00', end: '09:40' },
+            { id: 6, name: 'استراحة الفطور', start: '09:40', end: '10:00' },
+            { id: 7, name: 'الحصة الرابعة', start: '10:00', end: '10:40' },
+            { id: 8, name: 'الحصة الخامسة', start: '10:40', end: '11:20' },
+            { id: 9, name: 'الحصة السادسة', start: '11:20', end: '12:00' },
+            { id: 10, name: 'الحصة السابعة', start: '12:00', end: '12:40' },
+            { id: 11, name: 'الحصة الثامنة', start: '12:40', end: '13:20' }
         ];
 
-        // Load schedule but verify version to force update to 8 periods if user has old data
-        let schedule = JSON.parse(localStorage.getItem('schedule'));
-        const savedVersion = localStorage.getItem('dataVersion');
+        // Safe LocalStorage Loading
+        let schedule = DEFAULT_SCHEDULE;
+        let tickerText = "مرحباً بكم في نظام الجدول المدرسي الذكي";
+        let soundSettings = { type: 'tts', customSound: null };
+        let specialAudio = { quran: null, alarm: null };
 
-        if (!schedule || savedVersion !== DATA_VERSION) {
-            schedule = DEFAULT_SCHEDULE;
-            localStorage.setItem('schedule', JSON.stringify(schedule));
-            localStorage.setItem('dataVersion', DATA_VERSION);
+        try {
+            const savedSchedule = JSON.parse(localStorage.getItem('schedule'));
+            const savedVersion = localStorage.getItem('dataVersion');
+            
+            // Check version to prevent corruption from older versions
+            if (savedSchedule && Array.isArray(savedSchedule) && savedVersion === DATA_VERSION) {
+                schedule = savedSchedule;
+            } else {
+                // Force defaults if new version
+                localStorage.setItem('schedule', JSON.stringify(DEFAULT_SCHEDULE));
+                localStorage.setItem('dataVersion', DATA_VERSION);
+            }
+
+            const savedTicker = localStorage.getItem('tickerText');
+            if(savedTicker) tickerText = savedTicker;
+
+            const savedSound = JSON.parse(localStorage.getItem('soundSettings'));
+            if(savedSound) soundSettings = savedSound;
+
+            const savedSpecial = JSON.parse(localStorage.getItem('specialAudio'));
+            if(savedSpecial) specialAudio = savedSpecial;
+
+        } catch (e) {
+            console.error("Data Load Error, using defaults:", e);
+            localStorage.clear(); 
         }
 
-        let tickerText = localStorage.getItem('tickerText') || "مرحباً بكم في نظام الجدول المدرسي الذكي";
-        let soundSettings = JSON.parse(localStorage.getItem('soundSettings')) || { type: 'tts', customSound: null };
-        let specialAudio = JSON.parse(localStorage.getItem('specialAudio')) || { quran: null, alarm: null };
-        
         let lastTriggeredPeriod = null; 
         let isQuranPlaying = false;
 
@@ -351,40 +382,39 @@
             initClock();
             loadScheduleToUI();
             
-            // Safety check for elements before setting value
-            const tickerEl = document.getElementById('news-ticker-display');
-            const tickerInputEl = document.getElementById('ticker-input');
-            const soundTypeEl = document.getElementById('sound-type');
-            const quranPlayer = document.getElementById('quran-player');
-            const alarmPlayer = document.getElementById('alarm-player');
+            try {
+                const tickerEl = document.getElementById('news-ticker-display');
+                const tickerInputEl = document.getElementById('ticker-input');
+                const soundTypeEl = document.getElementById('sound-type');
+                const quranPlayer = document.getElementById('quran-player');
+                const alarmPlayer = document.getElementById('alarm-player');
 
-            if(tickerEl) tickerEl.textContent = tickerText;
-            if(tickerInputEl) tickerInputEl.value = tickerText;
-            if(soundTypeEl) soundTypeEl.value = soundSettings.type;
-            
-            updateSpecialAudioStatus();
-            toggleSoundUpload();
-            renderAdminTable();
+                if(tickerEl) tickerEl.textContent = tickerText;
+                if(tickerInputEl) tickerInputEl.value = tickerText;
+                if(soundTypeEl) soundTypeEl.value = soundSettings.type;
+                
+                updateSpecialAudioStatus();
+                toggleSoundUpload();
+                renderAdminTable();
 
-            // Setup players if data exists
-            if(specialAudio.quran && quranPlayer) quranPlayer.src = specialAudio.quran;
-            if(specialAudio.alarm && alarmPlayer) alarmPlayer.src = specialAudio.alarm;
+                if(specialAudio.quran && quranPlayer) quranPlayer.src = specialAudio.quran;
+                if(specialAudio.alarm && alarmPlayer) alarmPlayer.src = specialAudio.alarm;
+            } catch(e) {
+                console.error("DOM Init error", e);
+            }
 
-            // Audio Permission
             document.body.addEventListener('click', () => {
-                if (SpeechSynthesisUtterance) window.speechSynthesis.resume();
+                if (window.speechSynthesis) window.speechSynthesis.resume();
             }, { once: true });
         });
         
-        // Force update on window load to prevent "Current Status Loading" hang
+        // Force immediate update to clear initial state
         window.addEventListener('load', () => {
              const now = new Date();
              checkScheduleStatus(now);
         });
 
         // --- Special Audio Features (Quran & Fire) ---
-
-        // 1. Quran Logic
         const quranFile = document.getElementById('quran-file');
         if(quranFile) {
             quranFile.addEventListener('change', function() {
@@ -417,7 +447,6 @@
             }
         }
 
-        // 2. Fire Alarm Logic
         const alarmFile = document.getElementById('alarm-file');
         if(alarmFile) {
             alarmFile.addEventListener('change', function() {
@@ -429,20 +458,17 @@
             const overlay = document.getElementById('fire-overlay');
             const player = document.getElementById('alarm-player');
             
-            // Stop other sounds
             const qPlayer = document.getElementById('quran-player');
             const cPlayer = document.getElementById('custom-audio-player');
             if(qPlayer) qPlayer.pause();
             if(cPlayer) cPlayer.pause();
-            window.speechSynthesis.cancel();
+            if(window.speechSynthesis) window.speechSynthesis.cancel();
 
-            // Show Overlay
             if(overlay) {
                 overlay.classList.remove('hidden');
                 overlay.classList.add('fire-active');
             }
 
-            // Play Alarm
             if (specialAudio.alarm && player) {
                 player.play().catch(e => console.log(e));
             } else {
@@ -462,7 +488,7 @@
                 player.pause();
                 player.currentTime = 0;
             }
-            window.speechSynthesis.cancel();
+            if(window.speechSynthesis) window.speechSynthesis.cancel();
         }
 
         function handleSpecialFileUpload(file, key, name) {
@@ -507,7 +533,6 @@
 
         // --- Core Logic: Time & Status ---
         function initClock() {
-            // Define update function
             const update = () => {
                 const now = new Date();
                 const timeString = now.toLocaleTimeString('en-US', { hour12: true });
@@ -521,7 +546,6 @@
                 checkScheduleStatus(now);
             };
 
-            // Call immediately then interval
             update();
             setInterval(update, 1000);
         }
@@ -533,32 +557,37 @@
             let activePeriod = null;
             let nextPeriod = null;
 
-            schedule.sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
+            try {
+                if(!Array.isArray(schedule)) schedule = DEFAULT_SCHEDULE;
 
-            for (let i = 0; i < schedule.length; i++) {
-                const period = schedule[i];
-                // Safety check for valid period object
-                if (!period || !period.start || !period.end) continue; 
+                schedule.sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
 
-                const startMin = timeToMin(period.start);
-                const endMin = timeToMin(period.end);
+                for (let i = 0; i < schedule.length; i++) {
+                    const period = schedule[i];
+                    if (!period || !period.start || !period.end) continue; 
 
-                if (currentTimeVal >= startMin && currentTimeVal < endMin) {
-                    activePeriod = period;
-                    if (currentTimeVal === startMin && currentSeconds === 0) {
-                        triggerAlert(period);
+                    const startMin = timeToMin(period.start);
+                    const endMin = timeToMin(period.end);
+
+                    if (currentTimeVal >= startMin && currentTimeVal < endMin) {
+                        activePeriod = period;
+                        if (currentTimeVal === startMin && currentSeconds === 0) {
+                            triggerAlert(period);
+                        }
+                        if (i + 1 < schedule.length) nextPeriod = schedule[i+1];
+                        break;
                     }
-                    if (i + 1 < schedule.length) nextPeriod = schedule[i+1];
-                    break;
+                    
+                    if (currentTimeVal < startMin) {
+                        if (!nextPeriod) nextPeriod = period;
+                        break; 
+                    }
                 }
-                
-                if (currentTimeVal < startMin) {
-                    if (!nextPeriod) nextPeriod = period;
-                    break; 
-                }
-            }
 
-            updateStatusUI(activePeriod, nextPeriod, currentTimeVal, now);
+                updateStatusUI(activePeriod, nextPeriod, currentTimeVal, now);
+            } catch(e) {
+                console.error("Error in schedule loop", e);
+            }
         }
 
         function updateStatusUI(active, next, currentMin, nowObj) {
@@ -569,7 +598,7 @@
             const countdownLabel = document.getElementById('countdown-label');
             const nextNameEl = document.getElementById('next-activity-name');
             
-            // Guards to prevent null errors
+            // Critical Safety Check: If HTML element is missing, stop to avoid error
             if (!nameEl || !startEl || !endEl || !countdownDisplay || !countdownLabel || !nextNameEl) return;
 
             document.querySelectorAll('#schedule-body tr').forEach(tr => tr.classList.remove('active-row'));
@@ -584,7 +613,6 @@
                 const diffMin = endMin - currentMin - 1;
                 const diffSec = 59 - nowObj.getSeconds();
                 
-                // Ensure non-negative logic for safety
                 const safeDiffMin = Math.max(0, diffMin);
                 const safeDiffSec = Math.max(0, diffSec);
 
@@ -592,10 +620,8 @@
                 countdownLabel.textContent = "المتبقي لنهاية " + active.name;
                 
                 const activeRow = document.getElementById(`row-${active.id}`);
-                if (activeRow) activeRow.classList.add('active-row');
-                
-                // Scroll to active row automatically
-                if(activeRow) {
+                if (activeRow) {
+                    activeRow.classList.add('active-row');
                     activeRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
 
@@ -638,7 +664,6 @@
             const audioPlayer = document.getElementById('custom-audio-player');
             const fireOverlay = document.getElementById('fire-overlay');
 
-            // If fire alarm is active, don't play school bell
             if(fireOverlay && !fireOverlay.classList.contains('hidden')) return;
 
             if (period.audioData && audioPlayer) {
@@ -851,6 +876,7 @@
         }
 
         function get12HourParts(timeStr) {
+            if(!timeStr) return { h: 12, m: 0, period: 'AM' };
             let [h, m] = timeStr.split(':').map(Number);
             let period = 'AM';
             if (h >= 12) { period = 'PM'; if (h > 12) h -= 12; }
@@ -910,17 +936,18 @@
         
         function resetToDefault() {
             if(confirm("إعادة ضبط المصنع؟")) {
-                localStorage.removeItem('schedule');
-                localStorage.removeItem('tickerText');
-                localStorage.removeItem('specialAudio');
+                localStorage.clear();
                 location.reload();
             }
         }
 
         function timeToMin(timeStr) {
-            if (!timeStr || typeof timeStr !== 'string') return 0; // Safety check
-            const [h, m] = timeStr.split(':').map(Number);
-            return h * 60 + m;
+            if (!timeStr || typeof timeStr !== 'string') return 0;
+            const parts = timeStr.split(':');
+            if (parts.length < 2) return 0;
+            const h = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+            return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
         }
 
         function pad(num) {
@@ -928,6 +955,7 @@
         }
 
         function formatTime12(time24) {
+            if(!time24) return "--:--";
             let [h, m] = time24.split(':').map(Number);
             const period = h >= 12 ? 'م' : 'ص';
             h = h % 12 || 12;
